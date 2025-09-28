@@ -86,6 +86,46 @@ class OrderController extends Controller
         return response()->json($order->load('product'));
     }
 
+    public function index(Request $r)
+    {
+        $user = $r->user();
+    
+        // همه سفارشات کاربر همراه با محصول
+        $orders = Order::with('product')
+            ->where('user_id', $user->id)
+            ->latest()
+            ->get();
+    
+        // اضافه کردن لینک دانلود اگر سفارش پرداخت شده باشه و توکن معتبر داشته باشه
+        $orders = $orders->map(function ($order) {
+            $downloadUrl = null;
+    
+            if (in_array($order->status, ['finished', 'confirmed']) 
+                && $order->download_token 
+                && $order->download_expires_at 
+                && $order->download_expires_at->isFuture()
+            ) {
+                $downloadUrl = route('orders.file.download', [
+                    'order' => $order->id,
+                    'token' => $order->download_token
+                ]);
+            }
+    
+            return [
+                'id' => $order->id,
+                'amount' => $order->amount,
+                'currency' => $order->currency,
+                'pay_currency' => $order->pay_currency,
+                'status' => $order->status,
+                'created_at' => $order->created_at,
+                'product' => $order->product,
+                'download_url' => $downloadUrl, // یا null اگر منقضی یا پرداخت نشده
+            ];
+        });
+    
+        return response()->json($orders);
+    }
+
     public function download(Order $order, Request $r)
     {
         if ($r->user()->id !== $order->user_id) {
